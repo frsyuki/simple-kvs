@@ -1,0 +1,37 @@
+#!/usr/bin/env ruby -rubygems
+require 'msgpack/rpc'
+
+nodes = YAML.load File.read(ARGV.shift)
+myname = ARGV.shift
+node = nodes[myname]
+nodes = nodes.to_a.sort_by {|name, _| name }
+$rep1, $rep2 = (1..2).map {|i| nodes[ (nodes.index{|name,_| name == myname} + i) % nodes.size ][1] }
+
+class KVServer
+	def initialize(svr)
+		@hash = Hash.new
+		@svr = svr
+	end
+	def get(key)
+		puts "get #{key}"
+		@hash[key]
+	end
+	def set(key, value)
+		puts "set #{key}=#{value}"
+		@hash[key] = value
+		[$rep1, $rep2].each do |rep|
+			cli = MessagePack::RPC::Client.new(rep['host'], rep['port'].to_i, @svr.loop)
+			cli.callback(:repl, key, value) {|err,res| cli.close }
+		end
+		nil
+	end
+	def repl(key, value)
+		puts "repl #{key}=#{value}"
+		@hash[key] = value; nil
+	end
+end
+
+svr = MessagePack::RPC::Server.new
+svr.listen(node['host'], node['port'].to_i, KVServer.new(svr))
+$stdout.sync = true; puts "start"
+svr.run

@@ -1,0 +1,17 @@
+#!/usr/bin/env ruby -rubygems
+require 'msgpack/rpc'
+require 'digest/sha1'
+
+nodes = YAML.load File.read(ARGV.shift)
+nodes = nodes.to_a.sort_by {|name, _| name }.map {|name, host_port| host_port }
+
+key = ARGV.shift
+node = nodes[ Digest::SHA1.digest(key).unpack('Q')[0] % nodes.size ]
+
+cli = MessagePack::RPC::Client.new(node['host'], node['port'])
+cli.timeout = 5
+if val = ARGV.shift
+	cli.call(:set, key, val)
+else
+	puts cli.call(:get, key)
+end
